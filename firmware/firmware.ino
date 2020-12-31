@@ -3,9 +3,8 @@
 #include <Notecard.h>
 #include <Wire.h>
 
-#define buttonPin           21
+#define BUTTON_PIN          21
 #define buttonPressedState  LOW
-#define ledPin              13
 
 #define serialDebugOut Serial
 
@@ -13,17 +12,17 @@
 Notecard notecard;
 
 // Light Stack Pin Mappings
-#define RED_LIGHT    11
-#define BLUE_LIGHT   12
-#define GREEN_LIGHT  9
-#define ORANGE_LIGHT 10
+#define RED_LIGHT    13
+#define BLUE_LIGHT   27
+#define GREEN_LIGHT  A1
+#define ORANGE_LIGHT A5
 
 // Button handling 
 #define BUTTON_IDLE         0
 #define BUTTON_PRESS        1
 #define BUTTON_DOUBLEPRESS  2
 
-#define ATTN_INPUT_PIN 13
+#define ATTN_INPUT_PIN 14
 
 #define INBOUND_QUEUE_NOTEFILE      "build_results.qi"
 #define INBOUND_QUEUE_COMMAND_FIELD "result"
@@ -39,26 +38,33 @@ void attnArm(void);
 void updateBuildLight(void);
 void cycleLights(void);
 void allLightsOff(void);
+void checkBuildStatus(void);
 
 void setup() {
   pinMode(RED_LIGHT, OUTPUT);
   pinMode(BLUE_LIGHT, OUTPUT);
   pinMode(GREEN_LIGHT, OUTPUT);
   pinMode(ORANGE_LIGHT, OUTPUT);
+
+  allLightsOff();
   
-  delay(2500);
+  pinMode(BUTTON_PIN, buttonPressedState == LOW ? INPUT_PULLUP : INPUT);
+  
   serialDebugOut.begin(115200);
   notecard.setDebugOutputStream(serialDebugOut);
 
   Wire.begin();
   notecard.begin();
 
-  J *req = notecard.newRequest("hub.set");
+  J *req = notecard.newRequest("hub.get");
+  notecard.sendRequest(req);
+
+  req = notecard.newRequest("hub.set");
   JAddStringToObject(req, "product", myProductID);
   JAddStringToObject(req, "mode", "continuous");
-  JAddBoolToObject(req, "align", true);
-  JAddNumberToObject(req, "outbound", 15);
-  JAddNumberToObject(req, "inbound", 10);
+  JAddBoolToObject(req, "sync", true);
+  JAddNumberToObject(req, "outbound", 60);
+  JAddNumberToObject(req, "inbound", 240);
   notecard.sendRequest(req);
 
   // Disarm ATTN To clear any previous state before rearming
@@ -79,11 +85,14 @@ void setup() {
   pinMode(ATTN_INPUT_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(ATTN_INPUT_PIN), attnISR, RISING);
 
+  // Check to see if we have any incoming notes after a reset
+  checkBuildStatus();
+
+  // Set build light
+  updateBuildLight();
+  
   // Arm the interrupt, so that we are notified whenever ATTN rises
   attnArm();
-
-  //Set build light
-  updateBuildLight();
 }
 
 void loop() {
@@ -95,12 +104,14 @@ void loop() {
 
     case BUTTON_PRESS:
       // Test all lights
+      notecard.logDebug("Testing lights...\n\n");
       cycleLights();
       updateBuildLight();
       return;
 
     case BUTTON_DOUBLEPRESS:
       // Perform an on-demand sync
+      notecard.logDebug("Performing a Sync...\n\n");
       J *req = notecard.newRequest("hub.sync");
       notecard.sendRequest(req);
       return;
@@ -114,37 +125,39 @@ void loop() {
   attnArm();
 
   // Process all pending inbound requests
-  while (true) {
+  checkBuildStatus();    
+}
 
+void checkBuildStatus() {
+  while (true) {
     J *req = notecard.newRequest("note.get");
     JAddStringToObject(req, "file", INBOUND_QUEUE_NOTEFILE);
     JAddBoolToObject(req, "delete", true);
     J *rsp = notecard.requestAndResponse(req);
     if (rsp != NULL) {
-
+  
       if (notecard.responseError(rsp)) {
         notecard.deleteResponse(rsp);
         break;
       }
-
+  
       J *body = JGetObject(rsp, "body");
       if (body != NULL) {
-
-        // Simulate Processing the response here
+  
         char *incomingStatus = JGetString(body, INBOUND_QUEUE_COMMAND_FIELD);
         notecard.logDebugf("INBOUND STATUS: %s\n\n", incomingStatus);
-
+  
         // Determine if the status has changed and update accordingly
         if (strcmp(incomingStatus, buildStatus.c_str()) != 0) {
-          NoteDebugf("Status changed to: %s\n\n", incomingStatus);
+          notecard.logDebugf("Status changed to: %s\n\n", incomingStatus);
           
           buildStatus = String(incomingStatus);
           statusChanged = true;
-          
-          allLightsOff();
+         
+          updateBuildLight();
         }
       }
-
+  
     }
     notecard.deleteResponse(rsp);
   }
@@ -177,29 +190,16 @@ void updateBuildLight() {
 
 void cycleLights() {
   digitalWrite(RED_LIGHT, LOW);
-  delay(500);
-  digitalWrite(RED_LIGHT, HIGH);
-  delay(200);
-  
   digitalWrite(ORANGE_LIGHT, LOW);
-  delay(500);
-  digitalWrite(ORANGE_LIGHT, HIGH);
-  delay(200);
-  
   digitalWrite(GREEN_LIGHT, LOW);
-  delay(500);
-  digitalWrite(GREEN_LIGHT, HIGH);
-  delay(200);
-  
   digitalWrite(BLUE_LIGHT, LOW);
-  delay(500);
-  digitalWrite(BLUE_LIGHT, HIGH);
-  delay(200);
+  
+  delay(3000);
 }
 
 int getButtonPress() {
   static bool buttonBeingDebounced = false;
-  int buttonState = digitalRead(buttonPin);
+  int buttonState = digitalRead(BUTTON_PIN);
   if (buttonState != buttonPressedState) {
     if (buttonBeingDebounced) {
       buttonBeingDebounced = false;
@@ -215,17 +215,17 @@ int getButtonPress() {
   unsigned long buttonPressedMs = millis();
   unsigned long ignoreBounceMs = 100;
   unsigned long doublePressMs = 750;
-  while (millis() < buttonPressedMs+doublePressMs || digitalRead(buttonPin) == buttonPressedState) {
+  while (millis() < buttonPressedMs+doublePressMs || digitalRead(BUTTON_PIN) == buttonPressedState) {
     if (millis() < buttonPressedMs+ignoreBounceMs)
       continue;
-    if (digitalRead(buttonPin) != buttonPressedState) {
+    if (digitalRead(BUTTON_PIN) != buttonPressedState) {
       if (!buttonReleased)
         buttonReleased = true;
       continue;
     }
     if (buttonReleased) {
       buttonDoublePress = true;
-      if (digitalRead(buttonPin) != buttonPressedState)
+      if (digitalRead(BUTTON_PIN) != buttonPressedState)
         break;
     }
   }
