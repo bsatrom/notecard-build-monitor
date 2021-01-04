@@ -56,10 +56,7 @@ void setup() {
   Wire.begin();
   notecard.begin();
 
-  J *req = notecard.newRequest("hub.get");
-  notecard.sendRequest(req);
-
-  req = notecard.newRequest("hub.set");
+  J *req = notecard.newRequest("hub.set");
   JAddStringToObject(req, "product", myProductID);
   JAddStringToObject(req, "mode", "continuous");
   JAddBoolToObject(req, "sync", true);
@@ -99,9 +96,6 @@ void loop() {
   int buttonState = getButtonPress();
 
   switch (buttonState) {
-    case BUTTON_IDLE:
-      return;
-
     case BUTTON_PRESS:
       // Test all lights
       notecard.logDebug("Testing lights...\n\n");
