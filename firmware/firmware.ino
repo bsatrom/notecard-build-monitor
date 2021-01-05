@@ -16,6 +16,7 @@ Notecard notecard;
 #define BLUE_LIGHT   27
 #define GREEN_LIGHT  A1
 #define ORANGE_LIGHT A5
+#define WHITE_LIGHT 32
 
 // Button handling 
 #define BUTTON_IDLE         0
@@ -45,6 +46,7 @@ void setup() {
   pinMode(BLUE_LIGHT, OUTPUT);
   pinMode(GREEN_LIGHT, OUTPUT);
   pinMode(ORANGE_LIGHT, OUTPUT);
+  pinMode(WHITE_LIGHT, OUTPUT);
 
   allLightsOff();
   
@@ -162,6 +164,7 @@ void allLightsOff() {
   digitalWrite(ORANGE_LIGHT, HIGH);
   digitalWrite(GREEN_LIGHT, HIGH);
   digitalWrite(BLUE_LIGHT, HIGH);
+  digitalWrite(WHITE_LIGHT, HIGH);
 }
 
 void updateBuildLight() {
@@ -169,6 +172,9 @@ void updateBuildLight() {
  
   if (buildStatus == "building") {
     digitalWrite(BLUE_LIGHT, LOW);
+    statusChanged = false;  
+  } else if (buildStatus == "running_tests") {
+    digitalWrite(WHITE_LIGHT, LOW);
     statusChanged = false;  
   } else if (buildStatus == "success") {
     digitalWrite(GREEN_LIGHT, LOW);
@@ -187,6 +193,7 @@ void cycleLights() {
   digitalWrite(ORANGE_LIGHT, LOW);
   digitalWrite(GREEN_LIGHT, LOW);
   digitalWrite(BLUE_LIGHT, LOW);
+  digitalWrite(WHITE_LIGHT, LOW);
   
   delay(3000);
 }
